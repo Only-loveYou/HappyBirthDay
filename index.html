@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Wedding</title>
     <style>
         body {
@@ -11,10 +11,13 @@
             overflow: hidden;
             background: #000;
             font-family: 'Courier New', Courier, monospace;
+            touch-action: none; /* Chặn zoom trên mobile */
         }
 
         canvas {
             display: block;
+            width: 100%;
+            height: 100%;
         }
 
         #startBtn {
@@ -34,6 +37,7 @@
             transition: all 0.3s;
             font-weight: bold;
             animation: pulse 2s infinite;
+            white-space: nowrap;
         }
 
         #startBtn:hover {
@@ -43,17 +47,9 @@
         }
 
         @keyframes pulse {
-            0% {
-                box-shadow: 0 0 0 0 rgba(255, 105, 180, 0.7);
-            }
-
-            70% {
-                box-shadow: 0 0 0 15px rgba(255, 105, 180, 0);
-            }
-
-            100% {
-                box-shadow: 0 0 0 0 rgba(255, 105, 180, 0);
-            }
+            0% { box-shadow: 0 0 0 0 rgba(255, 105, 180, 0.7); }
+            70% { box-shadow: 0 0 0 15px rgba(255, 105, 180, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(255, 105, 180, 0); }
         }
     </style>
 </head>
@@ -73,24 +69,52 @@
         const btn = document.getElementById('startBtn');
         const audio = document.getElementById('bgMusic');
 
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
+        // Biến lưu kích thước logic (hiển thị)
+        let logicWidth, logicHeight;
 
-        // 🟢 TỰ SCALE FONT THEO KÍCH THƯỚC THIẾT BỊ
+        // 🟢 HÀM SETUP CANVAS ĐỘ PHÂN GIẢI CAO (High DPI)
+        function resizeCanvas() {
+            logicWidth = window.innerWidth;
+            logicHeight = window.innerHeight;
+            
+            // Lấy tỉ lệ điểm ảnh thiết bị (thường là 2 hoặc 3 trên mobile)
+            const dpr = window.devicePixelRatio || 1;
+
+            // Set kích thước thực của canvas nhân với dpr
+            canvas.width = logicWidth * dpr;
+            canvas.height = logicHeight * dpr;
+
+            // Set kích thước hiển thị CSS (giữ nguyên size màn hình)
+            canvas.style.width = logicWidth + 'px';
+            canvas.style.height = logicHeight + 'px';
+
+            // Scale context để vẽ đúng tỉ lệ
+            ctx.scale(dpr, dpr);
+            
+            // Cập nhật lại các thông số tính toán dựa trên kích thước mới
+            CONFIG.textScale = Math.min(logicWidth * 0.12, logicHeight * 0.18);
+            
+            // Cập nhật số cột mưa matrix
+            const newColumns = Math.floor(logicWidth / fontSize);
+            // Nếu số cột thay đổi, reset lại mảng drops để tránh lỗi
+            if (drops.length !== newColumns) {
+                drops.length = 0;
+                for(let i=0; i<newColumns; i++) drops.push(1);
+            }
+        }
+
         const CONFIG = {
             bgSpeed: 20,
             bgFade: 0.1,
             particleEase: 0.05,
-            textScale: Math.min(window.innerWidth * 0.12, window.innerHeight * 0.18),
-            gap: 5
+            textScale: 50, // Sẽ được tính lại trong resizeCanvas
+            gap: 4 // Giảm gap chút để chữ mịn hơn
         };
 
         const chars = 'HAPPY WEDDING';
         const charArray = chars.split('');
-
         const fontSize = 14;
-        const columns = canvas.width / fontSize;
-        const drops = Array.from({ length: columns }).map(() => 1);
+        let drops = []; // Khởi tạo mảng rỗng, sẽ fill trong resizeCanvas
 
         let particles = [];
 
@@ -98,13 +122,13 @@
             constructor(x, y) {
                 this.targetX = x;
                 this.targetY = y;
-
+                // Khởi tạo vị trí ngẫu nhiên ngoài màn hình logic
                 if (Math.random() > 0.5) {
-                    this.x = Math.random() > 0.5 ? -50 : canvas.width + 50;
-                    this.y = Math.random() * canvas.height;
+                    this.x = Math.random() > 0.5 ? -50 : logicWidth + 50;
+                    this.y = Math.random() * logicHeight;
                 } else {
-                    this.x = Math.random() * canvas.width;
-                    this.y = Math.random() > 0.5 ? -50 : canvas.height + 50;
+                    this.x = Math.random() * logicWidth;
+                    this.y = Math.random() > 0.5 ? -50 : logicHeight + 50;
                 }
                 this.char = charArray[Math.floor(Math.random() * charArray.length)];
                 this.color = '#ff69b4';
@@ -120,7 +144,8 @@
 
             draw() {
                 ctx.fillStyle = this.color;
-                ctx.shadowBlur = 20;
+                // Giảm shadowBlur trên mobile để tối ưu hiệu năng
+                ctx.shadowBlur = 10; 
                 ctx.shadowColor = '#ff1493';
                 ctx.fillText(this.char, this.x, this.y);
                 ctx.shadowBlur = 0;
@@ -132,27 +157,26 @@
             }
         }
 
-        // 🟢 HÀM CHỮ TÙY BIẾN & CĂN GIỮA CHUẨN
+        // 🟢 HÀM CHỮ TÙY BIẾN & CĂN GIỮA
         function getTextCoordinates(text) {
+            // Tạo canvas phụ để quét pixel (giữ kích thước logic để nhẹ)
             const bgCanvas = document.createElement('canvas');
             const bgCtx = bgCanvas.getContext('2d');
-            bgCanvas.width = canvas.width;
-            bgCanvas.height = canvas.height;
+            
+            bgCanvas.width = logicWidth;
+            bgCanvas.height = logicHeight;
 
             let baseSize = CONFIG.textScale;
 
-            // Auto scale theo độ dài chữ
             if (text.length > 5 && text.length <= 10) baseSize *= 0.9;
             if (text.length > 10) baseSize *= 0.7;
 
             const lines = text.split('\n');
 
-            // 🟢 Nhận diện dòng đặc biệt để làm bé dòng 2
             const isSpecial =
                 text.includes("TEAM BABIPRO") &&
                 text.includes("CHÚC HAI ANH CHỊ TRĂM NĂM HẠNH PHÚC");
 
-            // Font từng dòng
             let sizes = lines.map((_, index) =>
                 isSpecial ? (index === 0 ? baseSize : baseSize * 0.7) : baseSize
             );
@@ -161,25 +185,24 @@
             bgCtx.textBaseline = "middle";
             bgCtx.fillStyle = "#fff";
 
-            // 🔥 Tính block text nằm chính giữa canvas
             const spacing = baseSize * 0.3;
             const totalHeight = sizes.reduce((a, b) => a + b) + spacing * (sizes.length - 1);
-            let currentY = canvas.height / 2 - totalHeight / 2;
+            let currentY = logicHeight / 2 - totalHeight / 2;
 
-            // Vẽ từng dòng
             lines.forEach((line, index) => {
                 bgCtx.font = `bold ${sizes[index]}px Arial`;
-                bgCtx.fillText(line, canvas.width / 2, currentY + sizes[index] / 2);
+                bgCtx.fillText(line, logicWidth / 2, currentY + sizes[index] / 2);
                 currentY += sizes[index] + spacing;
             });
 
-            // Trích điểm pixel
-            const data = bgCtx.getImageData(0, 0, canvas.width, canvas.height).data;
+            const data = bgCtx.getImageData(0, 0, logicWidth, logicHeight).data;
             const coords = [];
 
-            for (let y = 0; y < canvas.height; y += CONFIG.gap) {
-                for (let x = 0; x < canvas.width; x += CONFIG.gap) {
-                    if (data[(y * canvas.width + x) * 4 + 3] > 128) {
+            // Quét pixel theo logic width/height
+            for (let y = 0; y < logicHeight; y += CONFIG.gap) {
+                for (let x = 0; x < logicWidth; x += CONFIG.gap) {
+                    // Check độ trong suốt
+                    if (data[(y * logicWidth + x) * 4 + 3] > 128) {
                         coords.push({ x, y });
                     }
                 }
@@ -192,7 +215,7 @@
 
             if (particles.length < coords.length) {
                 let need = coords.length - particles.length;
-                while (need--) particles.push(new MatrixParticle(canvas.width / 2, canvas.height / 2));
+                while (need--) particles.push(new MatrixParticle(logicWidth / 2, logicHeight / 2));
             }
 
             particles.forEach((p, i) => {
@@ -200,7 +223,8 @@
                     p.changeTarget(coords[i].x, coords[i].y);
                     p.color = '#ff69b4';
                 } else {
-                    p.changeTarget(Math.random() * canvas.width, Math.random() * canvas.height);
+                    // Cho các hạt thừa bay loạn xạ trong khung logic
+                    p.changeTarget(Math.random() * logicWidth, Math.random() * logicHeight);
                     p.color = 'rgba(0,0,0,0)';
                 }
             });
@@ -236,59 +260,62 @@
             if (t - lastTime < interval) return;
             lastTime = t;
 
+            // Xóa background dùng logicWidth/Height
             ctx.fillStyle = `rgba(0,0,0,${CONFIG.bgFade})`;
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillRect(0, 0, logicWidth, logicHeight);
+            
             ctx.font = fontSize + "px monospace";
 
-            // Mưa ký tự
-            ctx.shadowBlur = 8;
-            ctx.shadowColor = "white";
+            // Vẽ mưa Matrix
+            ctx.shadowBlur = 0; // Tắt shadow cho mưa để đỡ lag trên đt
+            
             drops.forEach((v, i) => {
                 const text = charArray[Math.floor(Math.random() * charArray.length)];
                 const x = i * fontSize;
                 const y = v * fontSize;
 
-                ctx.fillStyle = "#ffffff";
+                ctx.fillStyle = (Math.random() > 0.95) ? "#fff" : "#00ff00"; // Matrix xanh cho chất, hoặc để #fff
+                if(Math.random() > 0.95) ctx.fillStyle = "#ffffff"; 
+                else ctx.fillStyle = "rgba(255, 105, 180, 0.3)"; // Mưa màu hồng nhạt
+
                 ctx.fillText(text, x, y);
                 drops[i]++;
 
-                if (y > canvas.height && Math.random() > 0.975) drops[i] = 0;
+                if (y > logicHeight && Math.random() > 0.975) drops[i] = 0;
             });
-            ctx.shadowBlur = 0;
 
-            // Vẽ chữ timeline
+            // Vẽ hạt chữ
             particles.forEach(p => {
                 p.update();
                 if (p.color !== "rgba(0,0,0,0)") p.draw();
             });
         }
 
-        // 🟢 NÚT BẮT ĐẦU
+        // Khởi tạo kích thước ban đầu
+        resizeCanvas();
+
+        // 🟢 XỬ LÝ SỰ KIỆN
         btn.addEventListener('click', () => {
-
             audio.play().catch(() => { });
-            audio.loop = true;   // nhạc lặp lại
-
+            audio.loop = true;
             btn.style.display = "none";
-
             draw(0);
-
             setTimeout(() => {
                 initParticles(timeline[0].text);
                 runTimeline();
             }, 2000);
         });
 
-        // 🟢 Resize → tự scale lại kích thước chữ
+        // Resize thông minh
+        let resizeTimeout;
         window.addEventListener("resize", () => {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-
-            CONFIG.textScale = Math.min(window.innerWidth * 0.12, window.innerHeight * 0.18);
-
-            if (btn.style.display === "none") {
-                initParticles(timeline[currentStep].text);
-            }
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {
+                resizeCanvas();
+                if (btn.style.display === "none") {
+                    initParticles(timeline[currentStep >= timeline.length ? 3 : currentStep].text);
+                }
+            }, 100);
         });
 
     </script>
